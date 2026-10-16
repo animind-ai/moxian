@@ -12,7 +12,8 @@ jobs:
       - name: System deps (CJK font, LaTeX + dvisvgm, ffmpeg)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fonts-noto-cjk texlive-latex-base texlive-latex-extra texlive-fonts-recommended dvisvgm ffmpeg
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk texlive-latex-base texlive-latex-extra texlive-fonts-recommended dvisvgm ffmpeg \
+            libegl1 libgl1  # skia-python 导入时需要
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
