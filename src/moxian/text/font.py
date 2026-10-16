@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import skia
 
-from ..core import DOWN, LEFT, PX, Group, Node, PathNode, Style, arrange, transform as T
+from ..core import PX, Group, PathNode, Style
+from ..core import transform as T
 from ..path import Path
 
 DEFAULT_FONT = "Noto Sans CJK SC"

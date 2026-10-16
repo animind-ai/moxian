@@ -56,7 +56,7 @@ class VideoWriter:
             raise RuntimeError(f"ffmpeg 退出码 {code}")
         return self.out
 
-    def __enter__(self) -> "VideoWriter":
+    def __enter__(self) -> VideoWriter:
         return self
 
     def __exit__(self, *exc) -> None:

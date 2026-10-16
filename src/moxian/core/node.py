@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Iterator
 
 import numpy as np
 
@@ -50,12 +50,12 @@ class BBox:
         c = self.center
         return np.array([c[0] + direction[0] * self.width / 2, c[1] + direction[1] * self.height / 2])
 
-    def union(self, other: "BBox | None") -> "BBox":
+    def union(self, other: BBox | None) -> BBox:
         if other is None:
             return self
         return BBox(min(self.x0, other.x0), min(self.y0, other.y0), max(self.x1, other.x1), max(self.y1, other.y1))
 
-    def overlaps(self, other: "BBox", tolerance: float = 0.0) -> bool:
+    def overlaps(self, other: BBox, tolerance: float = 0.0) -> bool:
         return (
             min(self.x1, other.x1) - max(self.x0, other.x0) > tolerance
             and min(self.y1, other.y1) - max(self.y0, other.y0) > tolerance
@@ -65,17 +65,17 @@ class BBox:
 @dataclass
 class Node:
     name: str = ""
-    children: list["Node"] = field(default_factory=list)
+    children: list[Node] = field(default_factory=list)
     matrix: np.ndarray = field(default_factory=T.identity)
     style: Style | None = None  # None 表示继承父节点
     z: float = 0.0  # 同级绘制顺序：小的先画
 
     # ---- 树 ----
-    def add(self, *nodes: "Node") -> "Node":
+    def add(self, *nodes: Node) -> Node:
         self.children.extend(nodes)
         return self
 
-    def walk(self, parent_matrix: np.ndarray | None = None, parent_style: Style | None = None) -> Iterator[tuple["Node", np.ndarray, Style]]:
+    def walk(self, parent_matrix: np.ndarray | None = None, parent_style: Style | None = None) -> Iterator[tuple[Node, np.ndarray, Style]]:
         """深度优先，产出 (节点, 世界矩阵, 生效样式)。"""
         m = self.matrix if parent_matrix is None else parent_matrix @ self.matrix
         # 样式整体继承，但透明度沿树相乘：给一个组设 opacity 就能整组淡出
@@ -118,7 +118,7 @@ class Node:
         b = self.bbox()
         return 0.0 if b is None else b.height
 
-    def world_bbox(self, root: "Node") -> BBox | None:
+    def world_bbox(self, root: Node) -> BBox | None:
         """在 root 的坐标系里看自己（自己必须是 root 的后代）。"""
         return self.bbox(parent_matrix_of(root, self))
 
@@ -131,48 +131,48 @@ class Node:
         return ORIGIN.copy() if b is None else b.point(direction)
 
     # ---- 摆放（都是改 self.matrix，不碰路径数据）----
-    def apply(self, m: np.ndarray) -> "Node":
+    def apply(self, m: np.ndarray) -> Node:
         self.matrix = m @ self.matrix
         return self
 
-    def shift(self, delta) -> "Node":
+    def shift(self, delta) -> Node:
         return self.apply(T.translate(float(delta[0]), float(delta[1])))
 
-    def move_to(self, point) -> "Node":
+    def move_to(self, point) -> Node:
         return self.shift(np.asarray(point, dtype=float) - self.center())
 
-    def scale(self, factor: float, about=None) -> "Node":
+    def scale(self, factor: float, about=None) -> Node:
         about = self.center() if about is None else np.asarray(about, dtype=float)
         return self.apply(T.scale(factor, factor, (float(about[0]), float(about[1]))))
 
-    def scale_to_fit_width(self, width: float) -> "Node":
+    def scale_to_fit_width(self, width: float) -> Node:
         return self.scale(width / self.width) if self.width > 0 else self
 
-    def scale_to_fit_height(self, height: float) -> "Node":
+    def scale_to_fit_height(self, height: float) -> Node:
         return self.scale(height / self.height) if self.height > 0 else self
 
-    def rotate(self, radians: float, about=None) -> "Node":
+    def rotate(self, radians: float, about=None) -> Node:
         about = self.center() if about is None else np.asarray(about, dtype=float)
         return self.apply(T.rotate(radians, (float(about[0]), float(about[1]))))
 
-    def next_to(self, other: "Node | np.ndarray", direction: np.ndarray, gap: float = 0.25) -> "Node":
+    def next_to(self, other: Node | np.ndarray, direction: np.ndarray, gap: float = 0.25) -> Node:
         anchor = other.edge(direction) if isinstance(other, Node) else np.asarray(other, dtype=float)
         mine = self.edge(-direction)
         return self.shift(anchor + direction * gap - mine)
 
-    def align_to(self, other: "Node", direction: np.ndarray) -> "Node":
+    def align_to(self, other: Node, direction: np.ndarray) -> Node:
         """让自己在 direction 方向的边和 other 的对齐（例如 DOWN：底边对齐）。"""
         target = other.edge(direction)
         mine = self.edge(direction)
         delta = (target - mine) * np.abs(direction)
         return self.shift(delta)
 
-    def to_edge(self, direction: np.ndarray, margin: float = 0.3) -> "Node":
+    def to_edge(self, direction: np.ndarray, margin: float = 0.3) -> Node:
         frame = BBox(-FRAME_WIDTH / 2 + margin, -FRAME_HEIGHT / 2 + margin, FRAME_WIDTH / 2 - margin, FRAME_HEIGHT / 2 - margin)
         delta = (frame.point(direction) - self.edge(direction)) * np.abs(direction)
         return self.shift(delta)
 
-    def set_style(self, **changes) -> "Node":
+    def set_style(self, **changes) -> Node:
         self.style = (self.style or Style()).with_(**changes)
         return self
 

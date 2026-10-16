@@ -13,7 +13,8 @@ from pathlib import Path as FsPath
 import numpy as np
 import skia
 
-from ..core import FRAME_HEIGHT, BBox, Node, Style, transform as T
+from ..core import FRAME_HEIGHT, BBox, Node
+from ..core import transform as T
 from ..core.style import parse_color
 from ..path import Path
 
@@ -48,7 +49,7 @@ class SkiaRenderer:
         self.scale = height / FRAME_HEIGHT  # 像素 / 单位
         # 单位坐标 → 像素：x 右移半个画面，y 翻转
         self.view = T.translate(width / 2, height / 2) @ T.scale(self.scale, -self.scale)
-        self._paths: "weakref.WeakKeyDictionary[Path, skia.Path]" = weakref.WeakKeyDictionary()
+        self._paths: weakref.WeakKeyDictionary[Path, skia.Path] = weakref.WeakKeyDictionary()
         self._paints: dict[tuple, skia.Paint] = {}
 
     # ---- 缓存 ----

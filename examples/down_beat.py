@@ -13,9 +13,10 @@ import re
 import sys
 from pathlib import Path
 
-from common import A, BG, C, DIM, FG, HL_INK, CARD, chips, diff_table, pin_top, problem_card, surrounding, underline
+from common import BG, A, C, chips, diff_table, pin_top, problem_card, surrounding, underline
+
 from moxian.anim import Draw, Grow, Restyle, Timeline, fade_in, together
-from moxian.core import DOWN, Group, Style
+from moxian.core import Group
 from moxian.encode import render_video
 from moxian.render import SkiaRenderer
 

@@ -33,7 +33,7 @@ class Path:
     subpaths: list[Subpath] = field(default_factory=list)
 
     # ---- 构造 ----
-    def move_to(self, x: float, y: float) -> "Path":
+    def move_to(self, x: float, y: float) -> Path:
         self.subpaths.append(Subpath(np.array([x, y], dtype=float)))
         return self
 
@@ -42,23 +42,23 @@ class Path:
             self.move_to(0.0, 0.0)
         return self.subpaths[-1]
 
-    def line_to(self, x: float, y: float) -> "Path":
+    def line_to(self, x: float, y: float) -> Path:
         sp = self._current()
         p0, p3 = sp.end(), np.array([x, y], dtype=float)
         sp.segments.append(np.array([p0 + (p3 - p0) / 3, p0 + 2 * (p3 - p0) / 3, p3]))
         return self
 
-    def quad_to(self, cx: float, cy: float, x: float, y: float) -> "Path":
+    def quad_to(self, cx: float, cy: float, x: float, y: float) -> Path:
         sp = self._current()
         p0, c, p3 = sp.end(), np.array([cx, cy], dtype=float), np.array([x, y], dtype=float)
         sp.segments.append(np.array([p0 + 2 / 3 * (c - p0), p3 + 2 / 3 * (c - p3), p3]))
         return self
 
-    def cubic_to(self, c1x: float, c1y: float, c2x: float, c2y: float, x: float, y: float) -> "Path":
+    def cubic_to(self, c1x: float, c1y: float, c2x: float, c2y: float, x: float, y: float) -> Path:
         self._current().segments.append(np.array([[c1x, c1y], [c2x, c2y], [x, y]], dtype=float))
         return self
 
-    def close(self) -> "Path":
+    def close(self) -> Path:
         sp = self._current()
         if sp.segments and not np.allclose(sp.end(), sp.start):
             self.line_to(*sp.start)
@@ -81,7 +81,7 @@ class Path:
         return float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())
 
     # ---- 变换 ----
-    def transformed(self, m: np.ndarray) -> "Path":
+    def transformed(self, m: np.ndarray) -> Path:
         from ..core import transform as T
 
         out = Path()
@@ -91,10 +91,10 @@ class Path:
             out.subpaths.append(new)
         return out
 
-    def copy(self) -> "Path":
+    def copy(self) -> Path:
         return self.transformed(np.eye(3))
 
-    def extend(self, other: "Path") -> "Path":
+    def extend(self, other: Path) -> Path:
         self.subpaths.extend(sp for sp in other.copy().subpaths)
         return self
 

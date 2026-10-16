@@ -21,7 +21,7 @@ class Style:
     stroke_opacity: float = 1.0
     opacity: float = 1.0  # 整体透明度，乘在 fill / stroke 上
 
-    def with_(self, **changes) -> "Style":
+    def with_(self, **changes) -> Style:
         return replace(self, **changes)
 
     def visible(self) -> bool:

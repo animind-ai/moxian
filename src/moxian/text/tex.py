@@ -10,7 +10,8 @@ import hashlib
 import subprocess
 from pathlib import Path as FsPath
 
-from ..core import PX, Group, PathNode, Style, transform as T
+from ..core import PX, Group, PathNode, Style
+from ..core import transform as T
 from ..path import parse_svg
 
 PREAMBLE = r"""\documentclass[preview,border=0.5pt]{standalone}

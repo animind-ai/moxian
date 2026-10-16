@@ -7,13 +7,14 @@ interpolate(alpha)，alpha 已经过缓动。begin() 记下起始状态，finish
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 
-from ..core import Node, PathNode, Style, transform as T
+from ..core import Node, PathNode, Style
+from ..core import transform as T
 from ..core.style import parse_color
-from ..path import Path, align, lerp, partial
+from ..path import align, lerp, partial
 from . import easing
 
 Easing = Callable[[float], float]

@@ -4,8 +4,9 @@ import shutil
 import numpy as np
 import pytest
 
-from moxian.core import DOWN, LEFT, RIGHT, UP, Group, PathNode, Style, arrange, transform as T
-from moxian.path import Path, circle, parse_d, parse_svg, parse_transform, rect, rounded_rect
+from moxian.core import DOWN, LEFT, RIGHT, Group, PathNode, Style, arrange
+from moxian.core import transform as T
+from moxian.path import circle, parse_d, parse_svg, parse_transform, rect, rounded_rect
 from moxian.render import SkiaRenderer
 from moxian.text import Text
 

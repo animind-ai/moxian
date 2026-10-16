@@ -3,7 +3,7 @@ import shutil
 import numpy as np
 import pytest
 
-from moxian.anim import Draw, Grow, Morph, Restyle, Shift, Timeline, easing, fade_in, fade_out, together
+from moxian.anim import Draw, Grow, Morph, Restyle, Shift, Timeline, easing, fade_in
 from moxian.core import Group, PathNode, Style, parent_matrix_of
 from moxian.path import align, circle, lerp, partial, rect, split_cubic, subdivide
 
