@@ -53,7 +53,9 @@ class Timeline:
     def end(self) -> float:
         return max((i.end for i in self.items), default=0.0)
 
-    def seek(self, t: float) -> None:
+    def seek(self, t: float) -> bool:
+        """推进到时刻 t。返回这次有没有动画改变了画面（没有就可以复用上一帧）。"""
+        changed = False
         for item in sorted(self.items, key=lambda i: (i.start, 0)):
             if item.state == "done":
                 continue
@@ -68,6 +70,8 @@ class Timeline:
                 item.state = "done"
             else:
                 item.anim.interpolate(item.anim.ease(alpha))
+            changed = True
+        return changed
 
     def frames(self, fps: int = 30, until: float | None = None):
         total = self.end if until is None else max(until, self.end)

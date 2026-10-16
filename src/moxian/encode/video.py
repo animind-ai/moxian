@@ -40,6 +40,10 @@ class VideoWriter:
     def write(self, renderer: SkiaRenderer, root: Node) -> None:
         with self.surface as canvas:
             renderer.draw(canvas, root)
+        self.repeat()
+
+    def repeat(self) -> None:
+        """画面没变：把上一帧的像素原样再送一帧。"""
         assert self.proc.stdin is not None
         self.proc.stdin.write(self.buffer.tobytes())
         self.frames += 1
@@ -64,9 +68,16 @@ class VideoWriter:
 
 def render_video(root: Node, timeline, out: str | FsPath, renderer: SkiaRenderer, fps: int = 30,
                  audio: str | FsPath | None = None, until: float | None = None, log=print) -> FsPath:
+    drawn = 0
     with VideoWriter(out, renderer.width, renderer.height, fps, audio) as writer:
+        first = True
         for t in timeline.frames(fps, until):
-            timeline.seek(t)
-            writer.write(renderer, root)
-        log(f"{writer.frames} 帧 → {out}")
+            changed = timeline.seek(t)
+            if changed or first:
+                writer.write(renderer, root)
+                drawn += 1
+                first = False
+            else:
+                writer.repeat()
+        log(f"{writer.frames} 帧（重画 {drawn} 帧）→ {out}")
     return FsPath(out)

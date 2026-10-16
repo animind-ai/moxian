@@ -97,3 +97,16 @@ def test_tex_renders_paths(tmp_path, monkeypatch):
     box = m.bbox()
     assert abs(box.x0) < 1e-9 and abs(box.y0) < 1e-9  # 左下角在原点
     assert 0.15 < m.height < 0.4  # 30px 字号：主体约 7pt×3px，加下标
+
+
+def test_bold_weight_and_wrap():
+    from moxian.text import Paragraph, wrap
+
+    bold = Text("墨线", 36, weight="bold")
+    assert bold.width > Text("墨线", 36).width * 0.98  # 粗体至少不比常规窄
+    lines = wrap("这是一段很长的中文，里面有逗号，还有句号。以及 English words 不拆开。", 30, 3.0)
+    assert len(lines) >= 3
+    assert all(not ln or ln[0] not in "，。" for ln in lines)  # 标点不在行首
+    assert all("English" not in ln or "English" in ln for ln in lines)
+    para = Paragraph("第一行\n第二行", 30, max_width=5.0)
+    assert len(para.lines) == 2 and para.lines[1].center()[1] < para.lines[0].center()[1]

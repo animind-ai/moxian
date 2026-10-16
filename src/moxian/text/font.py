@@ -8,20 +8,26 @@ from __future__ import annotations
 
 import skia
 
-from ..core import PX, Group, Node, PathNode, Style, transform as T
+from ..core import DOWN, LEFT, PX, Group, Node, PathNode, Style, arrange, transform as T
 from ..path import Path
 
 DEFAULT_FONT = "Noto Sans CJK SC"
-_typefaces: dict[str, skia.Typeface] = {}
+WEIGHTS = {"normal": skia.FontStyle.Normal, "bold": skia.FontStyle.Bold}
+_typefaces: dict[tuple[str, str], skia.Typeface] = {}
+
+# 不能出现在行首的标点（挤到上一行末尾），和不能出现在行尾的标点
+NO_LINE_START = set("，。、；：！？）》」』】〕〗〙〛’”…—")
+NO_LINE_END = set("（《「『【〔〖〘〚‘“")
 
 
-def typeface(family: str) -> skia.Typeface:
-    if family not in _typefaces:
-        tf = skia.Typeface(family)
+def typeface(family: str, weight: str = "normal") -> skia.Typeface:
+    key = (family, weight)
+    if key not in _typefaces:
+        tf = skia.Typeface(family, WEIGHTS[weight]())
         if tf is None or tf.getFamilyName() != family:
             raise RuntimeError(f"系统里没有字体 {family!r}（找到的是 {tf.getFamilyName() if tf else None}）")
-        _typefaces[family] = tf
-    return _typefaces[family]
+        _typefaces[key] = tf
+    return _typefaces[key]
 
 
 def skia_path_to_path(sk: skia.Path) -> Path:
@@ -43,6 +49,12 @@ def skia_path_to_path(sk: skia.Path) -> Path:
     return out
 
 
+def measure(text: str, size: float, family: str = DEFAULT_FONT, weight: str = "normal") -> float:
+    """一段文字的前进宽度（画面单位）。"""
+    font = skia.Font(typeface(family, weight), size)
+    return font.measureText(text) * PX
+
+
 class Text(Group):
     """一行文字，每个字一个子节点，便于逐字动画。"""
 
@@ -51,7 +63,8 @@ class Text(Group):
         self.text = text
         self.size = size
         self.family = family
-        font = skia.Font(typeface(family), size)
+        self.weight = weight
+        font = skia.Font(typeface(family, weight), size)
         glyphs = font.textToGlyphs(text)
         xs = font.getXPos(glyphs)
         # 逐个取轮廓：getPaths 会漏掉空格这类没有轮廓的字形，让后面的字错位
@@ -73,3 +86,65 @@ class Text(Group):
     def baseline_y(self) -> float:
         """当前世界坐标下基线的 y。"""
         return float(T.apply(self.matrix, [[0.0, 0.0]])[0][1])
+
+
+def wrap(text: str, size: float, max_width: float, family: str = DEFAULT_FONT, weight: str = "normal") -> list[str]:
+    """按宽度折行（画面单位）。中文逐字折；英文单词不拆；标点不孤立在行首，开引号不留在行尾。"""
+    font = skia.Font(typeface(family, weight), size)
+    lines: list[str] = []
+    current = ""
+    width = 0.0
+    tokens = _tokens(text)
+    for tok in tokens:
+        if tok == "\n":
+            lines.append(current)
+            current, width = "", 0.0
+            continue
+        w = font.measureText(tok) * PX
+        if current and width + w > max_width and tok not in NO_LINE_START:
+            # 行尾是开引号时把它带到下一行
+            carry = ""
+            if current and current[-1] in NO_LINE_END:
+                carry, current = current[-1], current[:-1]
+            lines.append(current.rstrip())
+            current, width = carry, font.measureText(carry) * PX if carry else 0.0
+            if tok == " ":
+                continue
+        current += tok
+        width += w
+    if current:
+        lines.append(current.rstrip())
+    return [ln for ln in lines] or [""]
+
+
+def _tokens(text: str) -> list[str]:
+    """折行单位：英文单词和数字整块，其余逐字。"""
+    out: list[str] = []
+    word = ""
+    for ch in text:
+        if ch.isascii() and (ch.isalnum() or ch in "'-"):
+            word += ch
+            continue
+        if word:
+            out.append(word)
+            word = ""
+        out.append(ch)
+    if word:
+        out.append(word)
+    return out
+
+
+class Paragraph(Group):
+    """多行文字：按 max_width 自动折行，每行一个 Text。"""
+
+    def __init__(self, text: str, size: float = 30, color: str = "#000000", max_width: float = 10.0,
+                 line_gap: float = 0.35, family: str = DEFAULT_FONT, weight: str = "normal", align: str = "left"):
+        super().__init__(name=text)
+        self.lines = [Text(ln, size, color, family, weight) for ln in wrap(text, size, max_width, family, weight)]
+        for i, line in enumerate(self.lines):
+            line.shift([0.0, -i * (line.ascent + line.descent + line_gap)])
+        if align == "center":
+            widest = max(ln.advance for ln in self.lines)
+            for line in self.lines:
+                line.shift([(widest - line.advance) / 2, 0.0])
+        self.add(*self.lines)

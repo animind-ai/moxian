@@ -28,7 +28,7 @@ class Subpath:
         return self.segments[-1][2] if self.segments else self.start
 
 
-@dataclass
+@dataclass(eq=False)  # 按身份比较和哈希：渲染器按 Path 对象缓存 Skia 路径
 class Path:
     subpaths: list[Subpath] = field(default_factory=list)
 

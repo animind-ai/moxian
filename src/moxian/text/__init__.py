@@ -1,4 +1,4 @@
-from .font import DEFAULT_FONT, Text
+from .font import DEFAULT_FONT, Paragraph, Text, measure, wrap
 from .tex import Tex, TexError, math
 
-__all__ = ["DEFAULT_FONT", "Tex", "TexError", "Text", "math"]
+__all__ = ["DEFAULT_FONT", "Paragraph", "Tex", "TexError", "Text", "math", "measure", "wrap"]
