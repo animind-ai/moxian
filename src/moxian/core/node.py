@@ -78,9 +78,13 @@ class Node:
     def walk(self, parent_matrix: np.ndarray | None = None, parent_style: Style | None = None) -> Iterator[tuple["Node", np.ndarray, Style]]:
         """深度优先，产出 (节点, 世界矩阵, 生效样式)。"""
         m = self.matrix if parent_matrix is None else parent_matrix @ self.matrix
-        style = self.style or parent_style or Style()
-        if self.style is not None and parent_style is not None and self.style.opacity != 1.0:
-            style = style
+        # 样式整体继承，但透明度沿树相乘：给一个组设 opacity 就能整组淡出
+        if self.style is None:
+            style = parent_style or Style()
+        elif parent_style is None:
+            style = self.style
+        else:
+            style = self.style.with_(opacity=self.style.opacity * parent_style.opacity)
         yield self, m, style
         for child in sorted(self.children, key=lambda n: n.z):
             yield from child.walk(m, style)
@@ -113,6 +117,10 @@ class Node:
     def height(self) -> float:
         b = self.bbox()
         return 0.0 if b is None else b.height
+
+    def world_bbox(self, root: "Node") -> BBox | None:
+        """在 root 的坐标系里看自己（自己必须是 root 的后代）。"""
+        return self.bbox(parent_matrix_of(root, self))
 
     def center(self) -> np.ndarray:
         b = self.bbox()
@@ -190,6 +198,25 @@ class Group(Node):
 
     def __len__(self):
         return len(self.children)
+
+
+def parent_matrix_of(root: Node, target: Node) -> np.ndarray:
+    """target 的父节点在 root 坐标系里的矩阵（沿树累乘）。找不到时抛 ValueError。"""
+
+    def search(node: Node, acc: np.ndarray) -> np.ndarray | None:
+        if node is target:
+            return acc
+        m = acc @ node.matrix
+        for child in node.children:
+            found = search(child, m)
+            if found is not None:
+                return found
+        return None
+
+    found = search(root, T.identity())
+    if found is None:
+        raise ValueError(f"节点 {target.name!r} 不在 {root.name!r} 的树里")
+    return found
 
 
 def arrange(nodes: list[Node], direction: np.ndarray, gap: float = 0.25, align: np.ndarray | None = None) -> None:
