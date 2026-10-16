@@ -2,6 +2,7 @@ import shutil
 
 import numpy as np
 import pytest
+import skia
 
 from moxian.anim import CameraMove, Timeline, focus_on, reset
 from moxian.core import FRAME_HEIGHT, FRAME_WIDTH, BBox, Camera, Group, PathNode, Style
@@ -13,7 +14,9 @@ W, H = 320, 180
 
 
 def pixels(renderer: SkiaRenderer, root) -> np.ndarray:
-    return np.asarray(renderer.render(root).toarray())[:, :, :3].astype(int)
+    # 显式转成 RGBA：Skia 的原生像素格式在 macOS 上是 RGBA、在 Linux 上是 BGRA
+    image = renderer.render(root).convert(colorType=skia.kRGBA_8888_ColorType, alphaType=skia.kUnpremul_AlphaType)
+    return np.asarray(image.toarray())[:, :, :3].astype(int)
 
 
 def dark(img: np.ndarray) -> np.ndarray:
