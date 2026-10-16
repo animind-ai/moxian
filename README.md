@@ -1,5 +1,7 @@
 # 墨线 moxian
 
+> 0.0.x：实验阶段，接口随时会变；跑通的内容只有 scene-spec 的 §6.7 示例。
+
 数学讲解视频的矢量动画引擎。名字取自木匠弹线用的墨斗线：专门画精准线条的工具。
 
 墨线是 [scene-spec](https://github.com/animind-ai/scene-spec) 的渲染引擎，目标是取代 [kit](https://github.com/animind-ai/kit) 现在依赖的 Manim。它不是 Manim 的分叉；算法思路有参考，代码是重新写的，个别借用的片段会在文件头注明来源。
