@@ -69,6 +69,8 @@ class Node:
     matrix: np.ndarray = field(default_factory=T.identity)
     style: Style | None = None  # None 表示继承父节点
     z: float = 0.0  # 同级绘制顺序：小的先画
+    fixed: bool = False  # True：连同子节点不跟镜头走（钉住的题卡、底部胶囊），见 core/camera.py
+    keep_size: bool = False  # True：跟镜头移动，但画面上的大小不变（点、箭头），绕自己的局部原点缩回去
 
     # ---- 树 ----
     def add(self, *nodes: Node) -> Node:

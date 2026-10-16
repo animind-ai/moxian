@@ -13,7 +13,7 @@ from pathlib import Path as FsPath
 import numpy as np
 import skia
 
-from ..core import FRAME_HEIGHT, BBox, Node
+from ..core import FRAME_HEIGHT, BBox, Camera, Node
 from ..core import transform as T
 from ..core.style import parse_color
 from ..path import Path
@@ -42,10 +42,33 @@ def _skia_matrix(m: np.ndarray) -> skia.Matrix:
     )
 
 
+def _camera_exempt(root: Node) -> tuple[set[int], dict[int, np.ndarray]]:
+    """镜头的两种例外：fixed 节点及其后代的 id；keep_size 节点及其后代 → 锚点（那个 keep_size 节点局部原点的世界坐标）。"""
+    fixed: set[int] = set()
+    anchors: dict[int, np.ndarray] = {}
+
+    def visit(node: Node, parent: np.ndarray, pinned: bool, anchor: np.ndarray | None) -> None:
+        m = parent @ node.matrix
+        pinned = pinned or node.fixed
+        if anchor is None and node.keep_size:
+            anchor = m[:2, 2].copy()
+        if pinned:
+            fixed.add(id(node))
+        elif anchor is not None:
+            anchors[id(node)] = anchor
+        for child in node.children:
+            visit(child, m, pinned, anchor)
+
+    visit(root, T.identity(), False, None)
+    return fixed, anchors
+
+
 class SkiaRenderer:
-    def __init__(self, width: int = 1920, height: int = 1080, background: str = "#FFFFFF"):
+    def __init__(self, width: int = 1920, height: int = 1080, background: str = "#FFFFFF",
+                 camera: Camera | None = None):
         self.width, self.height = width, height
         self.background = background
+        self.camera = camera  # 可选镜头：叠在 view 之上；没有或是原样时和以前逐像素一致
         self.scale = height / FRAME_HEIGHT  # 像素 / 单位
         # 单位坐标 → 像素：x 右移半个画面，y 翻转
         self.view = T.translate(width / 2, height / 2) @ T.scale(self.scale, -self.scale)
@@ -78,8 +101,17 @@ class SkiaRenderer:
 
     # ---- 坐标 ----
 
+    def camera_view(self) -> np.ndarray | None:
+        """镜头生效时返回 view @ 镜头矩阵，否则 None。"""
+        if self.camera is None or self.camera.is_identity():
+            return None
+        return self.view @ self.camera.matrix
+
     def to_pixels(self, box: BBox, pad: float = 4.0) -> skia.Rect:
-        pts = T.apply(self.view, np.array([[box.x0, box.y0], [box.x1, box.y1]]))
+        """box 是镜头里的世界坐标（跟镜头走的对象所在的坐标系）。"""
+        cam_view = self.camera_view()
+        view = self.view if cam_view is None else cam_view
+        pts = T.apply(view, np.array([[box.x0, box.y0], [box.x1, box.y1]]))
         x0, x1 = sorted(pts[:, 0])
         y0, y1 = sorted(pts[:, 1])
         return skia.Rect.MakeLTRB(x0 - pad, y0 - pad, x1 + pad, y1 + pad)
@@ -93,20 +125,34 @@ class SkiaRenderer:
         if dirty is not None:
             canvas.clipRect(self.to_pixels(dirty))
         canvas.clear(skia.Color4f(r, g, b, 1.0))
-        for node, world, style in root.walk():
+        cam_view = self.camera_view()
+        fixed, anchors = _camera_exempt(root) if cam_view is not None else (set(), {})
+        items = root.walk()
+        if fixed:
+            # 镜头生效时不跟镜头走的一层（题卡、胶囊）整体画在最上面，放大的舞台不会盖住它
+            items = list(items)
+            items = [it for it in items if id(it[0]) not in fixed] + [it for it in items if id(it[0]) in fixed]
+        for node, world, style in items:
             path = getattr(node, "path", None)
             if path is None or not style.visible() or path.is_empty():
                 continue
             sk = self.skia_path(path)
+            if cam_view is None or id(node) in fixed:
+                full = self.view @ world
+            elif id(node) in anchors:
+                ax, ay = anchors[id(node)]
+                full = cam_view @ T.scale(1 / self.camera.zoom, about=(float(ax), float(ay))) @ world
+            else:
+                full = cam_view @ world
             canvas.save()
-            canvas.concat(_skia_matrix(self.view @ world))
-            # 描边宽度不随对象缩放：把画布缩放除回去（用 y 方向的单位像素比）
+            canvas.concat(_skia_matrix(full))
+            # 描边宽度不随对象（和镜头）缩放：把画布缩放除回去（用 y 方向的单位像素比）
             fill_a = style.fill_opacity * style.opacity
             if style.fill is not None and fill_a > 0:
                 canvas.drawPath(sk, self.paint(style.fill, fill_a, None))
             stroke_a = style.stroke_opacity * style.opacity
             if style.stroke is not None and stroke_a > 0 and style.stroke_width > 0:
-                local_scale = float(np.sqrt(abs(np.linalg.det((self.view @ world)[:2, :2]))))
+                local_scale = float(np.sqrt(abs(np.linalg.det(full[:2, :2]))))
                 width_px = style.stroke_width * self.height / 1080
                 canvas.drawPath(sk, self._stroke_paint(style.stroke, stroke_a, width_px / max(local_scale, 1e-9)))
             canvas.restore()
