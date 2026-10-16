@@ -111,3 +111,15 @@ def test_bold_weight_and_wrap():
     assert all("English" not in ln or "English" in ln for ln in lines)
     para = Paragraph("第一行\n第二行", 30, max_width=5.0)
     assert len(para.lines) == 2 and para.lines[1].center()[1] < para.lines[0].center()[1]
+
+
+def test_punctuation_squeeze_and_cjk_latin_spacing():
+    from moxian.text.font import spacing_adjustments
+
+    assert spacing_adjustments("好，“对”") == [0.0, 0.0, -0.5, 0.0, 0.0]  # ，“ 挤掉半个字宽
+    assert spacing_adjustments("第1项") == [0.0, 0.25, 0.25]  # 汉字和数字之间留空
+    plain = Text("例如，“x”", 30, typeset=False)
+    tight = Text("例如，“x”", 30)
+    assert tight.advance < plain.advance  # 挤压后更紧
+    spaced = Text("第1项", 30)
+    assert spaced.advance > Text("第1项", 30, typeset=False).advance

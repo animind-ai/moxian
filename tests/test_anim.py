@@ -112,3 +112,42 @@ def test_render_video(tmp_path):
     tl.add(0.0, Shift(node, [2, 0], 0.5))
     out = render_video(root, tl, tmp_path / "v.mp4", SkiaRenderer(192, 108), fps=10, log=lambda *_: None)
     assert out.exists() and out.stat().st_size > 1000
+
+
+def test_write_draws_outline_then_fills():
+    from moxian.anim import Write
+
+    a = PathNode(path=rect(1, 1))
+    b = PathNode(path=rect(1, 1))
+    g = Group(a, b)
+    g.style = Style(fill="#2563A8", opacity=0.0)
+    w = Write(g, 1.0, lag=0.5)
+    w.begin()
+    assert g.style.opacity == 1.0
+    w.interpolate(0.1)  # 第一个字形在描边，第二个还没开始
+    assert a.style.stroke == "#2563A8" and a.style.fill_opacity == 0.0
+    assert sum(len(s.segments) for s in b.path.subpaths) == 0
+    w.interpolate(0.95)  # 都在填色阶段
+    assert a.style.fill_opacity > 0.5
+    w.finish()
+    assert a.style is None and sum(len(s.segments) for s in a.path.subpaths) == 4
+
+
+def test_transform_copy_morphs_into_target_and_cleans_up():
+    from moxian.anim import TransformCopy
+
+    src = PathNode(path=rect(1, 1), style=Style(fill="#000000"))
+    dst = Group(PathNode(path=circle(0.5)), PathNode(path=circle(0.5)))
+    dst.children[1].shift([2, 0])
+    dst.style = Style(fill="#FF0000")
+    dst.shift([0, 3])
+    root = Group(src, dst)
+    t = TransformCopy([src], dst, root, 1.0)
+    t.begin()
+    assert dst.style.opacity == 0.0 and len(root.children) == 3  # 加了一层覆盖
+    t.interpolate(1.0)
+    overlay = root.children[-1]
+    assert np.allclose(overlay.bbox().center, dst.bbox().center, atol=1e-6)
+    t.finish()
+    assert len(root.children) == 2 and dst.style.opacity == 1.0
+    assert src.style.opacity == 1.0  # 源保持不动

@@ -19,6 +19,34 @@ _typefaces: dict[tuple[str, str], skia.Typeface] = {}
 # 不能出现在行首的标点（挤到上一行末尾），和不能出现在行尾的标点
 NO_LINE_START = set("，。、；：！？）》」』】〕〗〙〛’”…—")
 NO_LINE_END = set("（《「『【〔〖〘〚‘“")
+# 全角标点：字身占一个字宽，墨迹只在一侧，另一半是空白
+CLOSING = set("，。、；：！？．）》」』】〕〗〙〛’”")
+OPENING = set("（《「『【〔〖〘〚‘“")
+FULLWIDTH_PUNCT = CLOSING | OPENING
+
+
+def is_han(ch: str) -> bool:
+    return "\u3400" <= ch <= "\u9fff" or "\uf900" <= ch <= "\ufaff"
+
+
+def is_latin(ch: str) -> bool:
+    return ch.isascii() and ch.isalnum()
+
+
+def spacing_adjustments(text: str) -> list[float]:
+    """每个字前面要额外加的距离（以字宽 em 为单位）。
+
+    - 标点挤压：收尾标点后面紧跟标点、或开头标点前面紧跟标点时，挤掉半个字宽（W3C clreq 的"标点挤压"）；
+    - 中西文间距：汉字和拉丁字母 / 数字相邻时，加四分之一个字宽。
+    """
+    adjust = [0.0] * len(text)
+    for i in range(1, len(text)):
+        a, b = text[i - 1], text[i]
+        if (a in CLOSING and b in FULLWIDTH_PUNCT) or (a in FULLWIDTH_PUNCT and b in OPENING):
+            adjust[i] -= 0.5
+        elif (is_han(a) and is_latin(b)) or (is_latin(a) and is_han(b)):
+            adjust[i] += 0.25
+    return adjust
 
 
 def typeface(family: str, weight: str = "normal") -> skia.Typeface:
@@ -59,7 +87,8 @@ def measure(text: str, size: float, family: str = DEFAULT_FONT, weight: str = "n
 class Text(Group):
     """一行文字，每个字一个子节点，便于逐字动画。"""
 
-    def __init__(self, text: str, size: float = 36, color: str = "#000000", family: str = DEFAULT_FONT, weight: str = "normal"):
+    def __init__(self, text: str, size: float = 36, color: str = "#000000", family: str = DEFAULT_FONT, weight: str = "normal",
+                 typeset: bool = True):
         super().__init__(name=text)
         self.text = text
         self.size = size
@@ -67,7 +96,12 @@ class Text(Group):
         self.weight = weight
         font = skia.Font(typeface(family, weight), size)
         glyphs = font.textToGlyphs(text)
-        xs = font.getXPos(glyphs)
+        xs = list(font.getXPos(glyphs))
+        shift = 0.0
+        extra = spacing_adjustments(text) if typeset and len(glyphs) == len(text) else [0.0] * len(glyphs)
+        for i in range(len(xs)):
+            shift += extra[i] * size
+            xs[i] += shift
         # 逐个取轮廓：getPaths 会漏掉空格这类没有轮廓的字形，让后面的字错位
         paths = [font.getPath(g) for g in glyphs]
         # 字形轮廓的单位是像素（字号 size 对应的像素），缩到画面单位并翻转 y
@@ -77,7 +111,8 @@ class Text(Group):
                 continue
             p = skia_path_to_path(sk).transformed(T.translate(x, 0.0)).transformed(to_frame)
             self.add(PathNode(name=ch, path=p))
-        self.advance = (font.getXPos(glyphs + [0])[-1] if glyphs else 0.0) * PX
+        self.advance = ((font.getXPos(glyphs + [0])[-1] if glyphs else 0.0) + shift) * PX
+        self.em = size * PX
         self.style = Style(fill=color)
         metrics = font.getMetrics()
         self.ascent = -metrics.fAscent * PX  # 基线以上
