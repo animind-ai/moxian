@@ -26,6 +26,22 @@ def test_shapes_bbox():
     assert rounded_rect(3, 2, 0.3).bbox() == (-1.5, -1.0, 1.5, 1.0)
 
 
+def test_bbox_follows_the_curve_not_the_control_points():
+    # 鼓出去的一段三次曲线：控制点到 y=1，曲线本身只到 0.75
+    assert np.allclose(parse_d("M 0 0 C 0 1 1 1 1 0").bbox(), (0, 0, 1, 0.75))
+    # 圆转 30° 后宽高还是直径；只变换包围盒四个角会得到 6·(cos30° + sin30°) ≈ 8.2
+    node = PathNode(path=circle(3))
+    node.matrix = T.rotate(math.radians(30))
+    # （四段贝塞尔近似圆本身略鼓，误差约 3e-4·r）
+    assert abs(node.width - 6) < 5e-3 and abs(node.height - 6) < 5e-3
+    # 70% 圆弧（252°）：一侧碰到半径 1，另一侧只到 sin 72°
+    end = math.radians(252)
+    arc = parse_d(f"M 1 0 A 1 1 0 1 1 {math.cos(end)} {math.sin(end)}")
+    _, y0, _, y1 = arc.bbox()
+    assert abs((y1 - y0) - (1 + math.sin(math.radians(72)))) < 1e-3
+    assert parse_d("M 0 0").bbox() is None
+
+
 def test_parse_d_absolute_relative_and_arc():
     p = parse_d("M 0 0 L 10 0 l 0 10 H 0 Z")
     assert p.subpaths[0].closed and p.bbox() == (0, 0, 10, 10)

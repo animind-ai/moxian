@@ -73,12 +73,42 @@ class Path:
         pts = [sp.points() for sp in self.subpaths if sp.segments]
         return np.vstack(pts) if pts else np.zeros((0, 2))
 
-    def bbox(self) -> tuple[float, float, float, float] | None:
-        """用控制点的包围盒（略大于精确包围盒，渲染和布局够用）。"""
-        pts = self.all_points()
-        if len(pts) == 0:
+    def bbox(self, matrix: np.ndarray | None = None) -> tuple[float, float, float, float] | None:
+        """曲线本身的精确包围盒（不是控制点的）；给了 matrix 就先变换再求，旋转后也不会变大。
+
+        每段三次贝塞尔的极值在导数 a t² + b t + c 的根上，和端点一起取范围。
+        """
+        segs = [(sp.start if i == 0 else sp.segments[i - 1][2], *seg)
+                for sp in self.subpaths for i, seg in enumerate(sp.segments)]
+        if not segs:
             return None
-        return float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())
+        p = np.array(segs, dtype=float)  # (n, 4, 2)
+        if matrix is not None:
+            from ..core import transform as T
+
+            p = T.apply(matrix, p.reshape(-1, 2)).reshape(p.shape)
+        p0, p1, p2, p3 = p[:, 0], p[:, 1], p[:, 2], p[:, 3]
+        a = -p0 + 3 * p1 - 3 * p2 + p3
+        b = 2 * (p0 - 2 * p1 + p2)
+        c = p1 - p0
+        # 每段每个坐标最多两个根；不落在 (0, 1) 的记成 nan
+        with np.errstate(divide="ignore", invalid="ignore"):
+            disc = np.sqrt(np.maximum(b * b - 4 * a * c, 0.0))
+            quad = np.abs(a) > 1e-12
+            r1 = np.where(quad, (-b + disc) / (2 * a), -c / b)
+            r2 = np.where(quad, (-b - disc) / (2 * a), np.nan)
+            ts = np.stack([r1, r2], axis=1)  # (n, 2 根, 2 坐标)
+        ts = np.where((ts > 0) & (ts < 1), ts, np.nan)
+        u = 1 - ts
+        coords = [p[:, None, 0], p[:, None, 3]]  # 端点
+        for k in range(2):  # 第 k 个坐标在它自己的根上取值
+            t, s = ts[..., k], u[..., k]
+            coords.append(s**3 * p0[:, None, k] + 3 * s * s * t * p1[:, None, k]
+                          + 3 * s * t * t * p2[:, None, k] + t**3 * p3[:, None, k])
+        ends = np.concatenate(coords[:2], axis=1)  # (n, 2, 2)
+        xs = np.concatenate([ends[..., 0].ravel(), coords[2].ravel()])
+        ys = np.concatenate([ends[..., 1].ravel(), coords[3].ravel()])
+        return float(np.nanmin(xs)), float(np.nanmin(ys)), float(np.nanmax(xs)), float(np.nanmax(ys))
 
     # ---- 变换 ----
     def transformed(self, m: np.ndarray) -> Path:

@@ -96,14 +96,18 @@ class Node:
         """只看自己的几何，不含子节点，在自己的局部坐标系里。叶子类型覆盖它。"""
         return None
 
+    def own_bbox(self, m: np.ndarray) -> BBox | None:
+        """自己的几何经 m 变换后的包围盒。默认变换 local_bbox 的四个角；路径节点覆盖它，算得更紧。"""
+        own = self.local_bbox()
+        if own is None:
+            return None
+        pts = T.apply(m, np.array([[own.x0, own.y0], [own.x1, own.y0], [own.x1, own.y1], [own.x0, own.y1]]))
+        return BBox(pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max())
+
     def bbox(self, parent_matrix: np.ndarray | None = None) -> BBox | None:
         """含子节点，在 parent_matrix 所在坐标系里（默认世界坐标）。"""
         m = self.matrix if parent_matrix is None else parent_matrix @ self.matrix
-        box = None
-        own = self.local_bbox()
-        if own is not None:
-            pts = T.apply(m, np.array([[own.x0, own.y0], [own.x1, own.y0], [own.x1, own.y1], [own.x0, own.y1]]))
-            box = BBox(pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max())
+        box = self.own_bbox(m)
         for child in self.children:
             cb = child.bbox(m)
             if cb is not None:
@@ -185,6 +189,10 @@ class PathNode(Node):
 
     def local_bbox(self) -> BBox | None:
         b = self.path.bbox()
+        return None if b is None else BBox(*b)
+
+    def own_bbox(self, m: np.ndarray) -> BBox | None:
+        b = self.path.bbox(m)
         return None if b is None else BBox(*b)
 
 
