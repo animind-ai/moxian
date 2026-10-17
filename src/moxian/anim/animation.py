@@ -36,6 +36,10 @@ class Animation:
     def finish(self) -> None:
         self.interpolate(1.0)
 
+    def children(self) -> list[tuple[float, Animation]]:
+        """组合动画的子动画和它们相对本动画开始的时刻；时间线靠它找到嵌套的参数补间。"""
+        return []
+
 
 class Wait(Animation):
     def __init__(self, duration: float = 1.0):
@@ -228,6 +232,9 @@ class Group_(Animation):
     def finish(self) -> None:
         for a in self.anims:
             a.finish()
+
+    def children(self) -> list[tuple[float, Animation]]:
+        return [(0.0, a) for a in self.anims]
 
 
 together = Group_
