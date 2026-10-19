@@ -1,12 +1,16 @@
 # 墨线 moxian
 
+[中文](#中文) | [English](#english)
+
+## 中文
+
 > 0.0.x：实验阶段，接口随时会变；跑通的内容只有 scene-spec 的 §6.7 示例。
 
 数学讲解视频的矢量动画引擎。名字取自木匠弹线用的墨斗线：专门画精准线条的工具。
 
 墨线是 [scene-spec](https://github.com/animind-ai/scene-spec) 的渲染引擎，目标是取代 [kit](https://github.com/animind-ai/kit) 现在依赖的 Manim。它不是 Manim 的分叉；算法思路有参考，代码是重新写的，个别借用的片段会在文件头注明来源。
 
-## 0.0.1 有什么
+### 0.0.1 有什么
 
 | 包 | 内容 |
 |---|---|
@@ -21,7 +25,7 @@
 
 还没有：布局求解、scene-spec 编译（现在的示例是手搭画面）、OpenGL 后端。第一个里程碑是用墨线渲染 scene-spec 的 §6.7 示例整支，和 kit 的 Manim 输出逐帧对比；`examples/down_beat.py` 已经做到了其中的 Down 一段。
 
-## 参数驱动
+### 参数驱动
 
 ```python
 from moxian.anim import Dynamic, Param, ParamTween, Timeline, easing
@@ -34,7 +38,7 @@ tl.add(1.0, ParamTween(k, 2.0, duration=2.0, ease=easing.smooth))   # k: 1 → 2
 
 参数在时刻 t 的值只取决于 t（同一参数的后一个补间从前一个当时的值接管），所以逐帧 seek、跳着 seek、往回 seek 结果都一样；参数变了 `seek` 就返回 changed，静止帧复用不会漏帧。`Timeline.keyframes()` 给出补间起止时刻，供版式检查采样。
 
-## 跑示例
+### 跑示例
 
 ```bash
 uv sync
@@ -46,14 +50,74 @@ Down 一段 827 帧（1080p30）在 M 系列 Mac 上约 2 秒渲染完（含编�
 
 依赖：Python 3.11/3.12、skia-python、numpy；公式需要 `latex` 和 `dvisvgm`（TeX Live 自带）；中文需要系统装有 Noto Sans CJK SC。
 
-## 开发
+### 开发
 
 ```bash
 uv run pytest
 ```
 
-## 作者与许可
+### 作者与许可
 
 作者：Boxi Yu（[@BoxiYu](https://github.com/BoxiYu)）
 
-代码以 [MIT 许可](LICENSE)发布。
+代码以 [MIT 许可](LICENSE)发布。引用方式见 [CITATION.cff](CITATION.cff)。
+
+## English
+
+> 0.0.x: experimental; the API may change at any time. The only content that renders end to end so far is the §6.7 example from scene-spec.
+
+A vector animation engine for math explainer videos. The name comes from the carpenter's ink line (墨斗线), a tool made for drawing precise lines.
+
+moxian is the rendering engine for [scene-spec](https://github.com/animind-ai/scene-spec), and is meant to replace Manim, which [kit](https://github.com/animind-ai/kit) currently depends on. It is not a fork of Manim: some algorithmic ideas are borrowed, but the code is rewritten, and the few borrowed snippets note their source in the file header.
+
+### What's in 0.0.1
+
+| Package | Contents |
+|---|---|
+| `moxian.core` | Object tree (`Node` / `PathNode` / `Group`), affine transforms, bounding boxes, placement (`move_to`, `next_to`, `align_to`, `arrange`…), styles |
+| `moxian.path` | Vector paths unified as cubic Béziers; common shapes; SVG `d` parsing (including arcs) and the subset of SVG that dvisvgm output uses |
+| `moxian.text` | Chinese text → glyph outlines (outlines via Skia, Noto Sans CJK SC by default, bold supported); `Paragraph` wraps by width and keeps punctuation from starting a line; formulas → outlines (latex + dvisvgm, cached by content) |
+| `moxian.render` | Skia rasterization backend, outputs PNG or draws straight into memory; Skia paths are cached per object and transforms are left to the canvas, so only dirty regions need redrawing |
+| `moxian.anim` | Animation primitives (fade in/out, shift, scale, grow, style tween, stroke drawing, morph), easing, timeline; parameter-driven (`Param` numeric parameters + `ParamTween` tweens, `Dynamic` nodes rebuilt from parameters, `updater` callbacks updated from parameters); parameter values are pure functions of time |
+| `moxian.encode` | Feeds the frame sequence to ffmpeg to encode a video, optionally muxing in an audio track; frames whose picture did not change reuse the previous frame's pixels |
+
+The coordinate system matches Manim's: the frame is 8 units tall and 8×16/9 wide, the origin is at the center, and y points up; font sizes and stroke widths are in pixels at 1080p. All paths are cubic Béziers; before morphing, the two paths are aligned to the same structure (padding degenerate subpaths, bisecting the longest segment).
+
+Not yet: layout solving, scene-spec compilation (the current examples build frames by hand), an OpenGL backend. The first milestone is to render the whole §6.7 scene-spec example with moxian and compare it frame by frame with kit's Manim output; `examples/down_beat.py` already does the Down segment of it.
+
+### Parameter-driven animation
+
+```python
+from moxian.anim import Dynamic, Param, ParamTween, Timeline, easing
+
+k = Param(1.0, "k")
+slope_line = Dynamic(lambda: PathNode(path=line(-3, -3 * k.value, 3, 3 * k.value), style=...), k)
+tl = Timeline()
+tl.add(1.0, ParamTween(k, 2.0, duration=2.0, ease=easing.smooth))   # k: 1 → 2, the line rotates with it
+```
+
+A parameter's value at time t depends only on t (a later tween of the same parameter takes over from the value the earlier one had at that moment), so seeking frame by frame, skipping ahead, or seeking backwards all give the same result; when a parameter changes, `seek` returns changed, so static-frame reuse never drops a frame. `Timeline.keyframes()` gives the start and end times of tweens for layout checks to sample.
+
+### Running the examples
+
+```bash
+uv sync
+uv run python examples/first_frame.py   # → build/first_frame.png
+uv run python examples/down_beat.py /path/to/p01/audio   # → build/down.mp4, 1080p30, with narration
+```
+
+The Down segment is 827 frames (1080p30) and renders in about 2 seconds on an M-series Mac (encoding included); only 162 of those frames need redrawing.
+
+Requirements: Python 3.11/3.12, skia-python, numpy; formulas need `latex` and `dvisvgm` (bundled with TeX Live); Chinese text needs Noto Sans CJK SC installed on the system.
+
+### Development
+
+```bash
+uv run pytest
+```
+
+### Author and license
+
+Author: Boxi Yu ([@BoxiYu](https://github.com/BoxiYu))
+
+The code is released under the [MIT License](LICENSE). To cite, see [CITATION.cff](CITATION.cff).

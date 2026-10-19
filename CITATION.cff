@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use moxian, please cite it as below."
+title: "moxian: vector animation engine for math explainer videos"
+type: software
+authors:
+  - family-names: "Yu"
+    given-names: "Boxi"
+    alias: "BoxiYu"
+license: MIT
+repository-code: "https://github.com/animind-ai/moxian"
