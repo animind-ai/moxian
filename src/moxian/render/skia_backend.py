@@ -13,7 +13,7 @@ from pathlib import Path as FsPath
 import numpy as np
 import skia
 
-from ..core import FRAME_HEIGHT, BBox, Camera, Node
+from ..core import FRAME_HEIGHT, BBox, Camera, ImageNode, Node
 from ..core import transform as T
 from ..core.style import parse_color
 from ..path import Path
@@ -75,6 +75,7 @@ class SkiaRenderer:
         self.view = T.translate(width / 2, height / 2) @ T.scale(self.scale, -self.scale)
         self._paths: weakref.WeakKeyDictionary[Path, skia.Path] = weakref.WeakKeyDictionary()
         self._paints: dict[tuple, skia.Paint] = {}
+        self._images: dict[str, skia.Image] = {}
 
     # ---- 缓存 ----
 
@@ -145,6 +146,10 @@ class SkiaRenderer:
             items = list(items)
             items = [it for it in items if id(it[0]) not in fixed] + [it for it in items if id(it[0]) in fixed]
         for node, world, style in items:
+            if isinstance(node, ImageNode):
+                if style.opacity > 0:
+                    self._draw_image(canvas, node, self._placed_matrix(node, world, cam_view, fixed, anchors), style.opacity)
+                continue
             path = getattr(node, "path", None)
             paint_raster = getattr(node, "paint_raster", None)
             has_path = path is not None and style.visible() and not path.is_empty()
@@ -170,6 +175,22 @@ class SkiaRenderer:
                 width_px = style.stroke_width * self.height / 1080
                 canvas.drawPath(sk, self._stroke_paint(style.stroke, stroke_a, width_px / max(local_scale, 1e-9)))
             canvas.restore()
+        canvas.restore()
+
+    def _draw_image(self, canvas: skia.Canvas, node: ImageNode, full: np.ndarray, opacity: float) -> None:
+        img = self._images.get(node.src)
+        if img is None:
+            img = skia.Image.open(node.src)
+            self._images[node.src] = img
+        w, h = node.box_width, node.box_height
+        canvas.save()
+        canvas.concat(_skia_matrix(full))
+        # 局部坐标 y 向上，位图 y 向下：先翻转再画进框里
+        canvas.translate(-w / 2, h / 2)
+        canvas.scale(1.0, -1.0)
+        paint = skia.Paint(AntiAlias=True, Color4f=skia.Color4f(1.0, 1.0, 1.0, max(0.0, min(1.0, opacity))))
+        canvas.drawImageRect(img, skia.Rect.MakeWH(w, h), skia.SamplingOptions(skia.FilterMode.kLinear,
+                                                                              skia.MipmapMode.kLinear), paint)
         canvas.restore()
 
     def _stroke_paint(self, color: str, opacity: float, width_local: float) -> skia.Paint:

@@ -196,6 +196,35 @@ class PathNode(Node):
         return None if b is None else BBox(*b)
 
 
+
+@dataclass
+class ImageNode(Node):
+    """一张位图（PNG / JPEG），画进以局部原点为中心、width × height 的框里（画面单位）。
+
+    只用 style.opacity（淡入淡出）；填充、描边不起作用。位图在渲染器里按文件解码一次。
+    """
+
+    src: str = ""
+    box_width: float = 1.0
+    box_height: float = 1.0
+
+    @classmethod
+    def from_file(cls, src: str, width: float | None = None, height: float | None = None, name: str = "") -> ImageNode:
+        """按位图的宽高比定框：给 width 或 height 之一（都不给时高 1 个单位）。"""
+        import skia
+
+        img = skia.Image.open(str(src))
+        aspect = img.width() / img.height()
+        if width is None:
+            height = height or 1.0
+            width = height * aspect
+        elif height is None:
+            height = width / aspect
+        return cls(name=name or str(src), src=str(src), box_width=float(width), box_height=float(height))
+
+    def local_bbox(self) -> BBox | None:
+        return BBox(-self.box_width / 2, -self.box_height / 2, self.box_width / 2, self.box_height / 2)
+
 class Group(Node):
     def __init__(self, *children: Node, name: str = ""):
         super().__init__(name=name, children=list(children))
