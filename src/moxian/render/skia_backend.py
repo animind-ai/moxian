@@ -69,6 +69,7 @@ class SkiaRenderer:
         self.width, self.height = width, height
         self.background = background
         self.camera = camera  # 可选镜头：叠在 view 之上；没有或是原样时和以前逐像素一致
+        self.time = 0.0  # 成片时刻（秒）。ClipNode 靠它取帧；render_video 每帧会改
         self.scale = height / FRAME_HEIGHT  # 像素 / 单位
         # 单位坐标 → 像素：x 右移半个画面，y 翻转
         self.view = T.translate(width / 2, height / 2) @ T.scale(self.scale, -self.scale)
@@ -118,8 +119,19 @@ class SkiaRenderer:
 
     # ---- 绘制 ----
 
-    def draw(self, canvas: skia.Canvas, root: Node, dirty: BBox | None = None) -> None:
-        """画整棵树；给了 dirty（单位坐标）就只重画那一块。"""
+    def _placed_matrix(self, node: Node, world: np.ndarray, cam_view, fixed: set[int], anchors: dict[int, np.ndarray]) -> np.ndarray:
+        """节点局部坐标 → 像素。镜头、fixed、keep_size 和路径节点走同一套。"""
+        if cam_view is None or id(node) in fixed:
+            return self.view @ world
+        if id(node) in anchors:
+            ax, ay = anchors[id(node)]
+            return cam_view @ T.scale(1 / self.camera.zoom, about=(float(ax), float(ay))) @ world
+        return cam_view @ world
+
+    def draw(self, canvas: skia.Canvas, root: Node, dirty: BBox | None = None, time: float | None = None) -> None:
+        """画整棵树；给了 dirty（单位坐标）就只重画那一块。time 会改成片时刻。"""
+        if time is not None:
+            self.time = time
         r, g, b = parse_color(self.background)
         canvas.save()
         if dirty is not None:
@@ -134,18 +146,20 @@ class SkiaRenderer:
             items = [it for it in items if id(it[0]) not in fixed] + [it for it in items if id(it[0]) in fixed]
         for node, world, style in items:
             path = getattr(node, "path", None)
-            if path is None or not style.visible() or path.is_empty():
+            paint_raster = getattr(node, "paint_raster", None)
+            has_path = path is not None and style.visible() and not path.is_empty()
+            if paint_raster is None and not has_path:
                 continue
-            sk = self.skia_path(path)
-            if cam_view is None or id(node) in fixed:
-                full = self.view @ world
-            elif id(node) in anchors:
-                ax, ay = anchors[id(node)]
-                full = cam_view @ T.scale(1 / self.camera.zoom, about=(float(ax), float(ay))) @ world
-            else:
-                full = cam_view @ world
+            full = self._placed_matrix(node, world, cam_view, fixed, anchors)
             canvas.save()
             canvas.concat(_skia_matrix(full))
+            # 外部画面（片段）先画，同一节点上的路径盖在上面
+            if paint_raster is not None:
+                paint_raster(canvas, self.time, style.opacity)
+            if not has_path:
+                canvas.restore()
+                continue
+            sk = self.skia_path(path)
             # 描边宽度不随对象（和镜头）缩放：把画布缩放除回去（用 y 方向的单位像素比）
             fill_a = style.fill_opacity * style.opacity
             if style.fill is not None and fill_a > 0:

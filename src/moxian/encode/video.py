@@ -66,18 +66,48 @@ class VideoWriter:
             self.proc.kill()
 
 
+def _raster_signature(root: Node, t: float) -> tuple:
+    """每个带 raster_key 的节点在时刻 t 的帧号。变了就得重画（片段在播，矢量可能没动）。"""
+    keys = []
+    for node, _, _ in root.walk():
+        key_at = getattr(node, "raster_key", None)
+        if key_at is not None:
+            keys.append(key_at(t))
+    return tuple(keys)
+
+
+def _raster_until(root: Node) -> float:
+    """片段播完一遍的最晚时刻。没有片段时是 0，不改变原来的成片长度。"""
+    end = 0.0
+    for node, _, _ in root.walk():
+        until = getattr(node, "play_until", None)
+        if until is not None:
+            end = max(end, float(until()))
+    return end
+
+
 def render_video(root: Node, timeline, out: str | FsPath, renderer: SkiaRenderer, fps: int = 30,
                  audio: str | FsPath | None = None, until: float | None = None, log=print) -> FsPath:
     drawn = 0
+    # 没指定 until、时间线也比片段短时，把成片拉到片段播完一遍（停在最后一帧，不额外加尾）
+    frame_until = until
+    if until is None:
+        horizon = _raster_until(root)
+        if horizon > timeline.end:
+            frame_until = horizon
     with VideoWriter(out, renderer.width, renderer.height, fps, audio) as writer:
         first = True
-        for t in timeline.frames(fps, until):
+        prev = None
+        for t in timeline.frames(fps, frame_until):
             changed = timeline.seek(t)
-            if changed or first:
+            renderer.time = t
+            signature = _raster_signature(root, t)
+            if changed or first or signature != prev:
                 writer.write(renderer, root)
                 drawn += 1
                 first = False
             else:
                 writer.repeat()
+            prev = signature
         log(f"{writer.frames} 帧（重画 {drawn} 帧）→ {out}")
     return FsPath(out)
