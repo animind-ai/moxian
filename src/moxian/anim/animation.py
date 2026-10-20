@@ -387,3 +387,118 @@ class TransformCopy(Animation):
         if self.overlay in self.root.children:
             self.root.children.remove(self.overlay)
         self.node.set_style(opacity=1.0)
+
+
+class TransformMatching(Animation):
+    """按配对把 source 变成 target：配对的部件从源里的位置、大小平滑地平移 + 缩放到目标里的位置，
+    没配上的源部件淡出、没配上的目标部件淡入。
+
+    pairs 是 (源部件, 目标部件, crossfade) 的列表，部件是 root 树里的节点（一个名字可以对应几个节点，
+    按它们的并集包围盒算位置和大小）。crossfade=False：两边的字形一样，源部件一开始就藏起来，目标部件
+    不透明地从源的位置走过去；True：字形不同，源部件跟着走过去并淡出，目标部件跟着走并淡入。
+
+    keep_source=False：源整体随动画淡出，结束时 opacity 为 0（被目标替换）；True：源不动、不藏，
+    目标部件像 TransformCopy 一样从源那里"复制"过去。动画期间不增删节点，结束时所有部件的矩阵和样式
+    都还原，只留下 target 的 opacity=1（和 keep_source=False 时 source 的 opacity=0）。
+
+    是重排（部件互相穿过），不做中途采样。
+    """
+
+    def __init__(self, source: Node, target: Node, pairs: list[tuple[list[Node], list[Node], bool]], root: Node,
+                 duration: float = 1.0, keep_source: bool = False, ease: Easing = easing.smooth):
+        super().__init__(target, duration, ease)
+        self.source, self.pairs, self.root, self.keep_source = source, pairs, root, keep_source
+
+    def _world_box(self, parts: list[Node]):
+        from ..core import parent_matrix_of
+
+        box = None
+        for p in parts:
+            b = p.bbox(parent_matrix_of(self.root, p))
+            if b is not None:
+                box = b if box is None else box.union(b)
+        return box
+
+    def _own(self, node: Node) -> None:
+        """要改 node 的透明度：先记下原样式；没有自己的样式（继承父节点）时，换成此刻生效的样式，颜色不丢。"""
+        if id(node) in self.saved:
+            return
+        self.saved[id(node)] = (node, node.style)
+        if node.style is None:
+            eff = next((s for n, _m, s in self.root.walk() if n is node), None) or Style()
+            node.style = eff.with_(opacity=1.0)
+
+    def begin(self) -> None:
+        super().begin()
+        from ..core import parent_matrix_of
+
+        self.saved: dict[int, tuple[Node, Style | None]] = {}
+        self._own(self.node)
+        self.node.set_style(opacity=1.0)
+        if not self.keep_source:
+            self._own(self.source)
+            self.source_start = (self.source.style or Style()).opacity
+        matched = {id(p) for _s, dst, _c in self.pairs for p in dst}
+
+        def unmatched(node: Node) -> list[Node]:
+            """target 里不含任何配对部件的最大子树：整棵淡入。"""
+            if id(node) in matched:
+                return []
+            if not any(id(n) in matched for n, _m, _s in node.walk()):
+                return [node]
+            return [x for c in node.children for x in unmatched(c)]
+
+        self.fade_ins = unmatched(self.node)
+        for n in self.fade_ins:
+            self._own(n)
+        self.moves = []  # (节点, 父节点的世界矩阵, 原矩阵, 起点中心, 终点中心, 起点缩放, 终点缩放, 透明度 None/淡入/淡出)
+        for src, dst, crossfade in self.pairs:
+            s_box, d_box = self._world_box(src), self._world_box(dst)
+            if s_box is None or d_box is None:
+                self.fade_ins += [p for p in dst if p not in self.fade_ins]
+                for p in dst:
+                    self._own(p)
+                continue
+            if d_box.height > 1e-9 and s_box.height > 1e-9:
+                k = s_box.height / d_box.height
+            elif d_box.width > 1e-9 and s_box.width > 1e-9:
+                k = s_box.width / d_box.width
+            else:
+                k = 1.0
+            for p in dst:
+                if crossfade:
+                    self._own(p)
+                self.moves.append((p, parent_matrix_of(self.root, p), p.matrix.copy(), s_box.center, d_box.center,
+                                   d_box.center, k, 1.0, "in" if crossfade else None))
+            if self.keep_source:
+                continue
+            for p in src:
+                self._own(p)
+                if crossfade:  # 跟着走过去，透明度随源整体淡出
+                    self.moves.append((p, parent_matrix_of(self.root, p), p.matrix.copy(), s_box.center, d_box.center,
+                                       s_box.center, 1.0, 1.0 / k, None))
+                else:  # 目标部件不透明地顶替它
+                    p.set_style(opacity=0.0)
+        self.interpolate(0.0)
+
+    def interpolate(self, alpha: float) -> None:
+        for p, parent, base, c0, c1, about, k0, k1, fade in self.moves:
+            c = c0 + (c1 - c0) * alpha
+            k = k0 + (k1 - k0) * alpha
+            world = T.translate(float(c[0]), float(c[1])) @ T.scale(k) @ T.translate(-float(about[0]), -float(about[1]))
+            p.matrix = np.linalg.inv(parent) @ world @ parent @ base
+            if fade == "in":
+                p.set_style(opacity=alpha)
+        for n in self.fade_ins:
+            n.set_style(opacity=alpha)
+        if not self.keep_source:
+            self.source.set_style(opacity=self.source_start * (1.0 - alpha))
+
+    def finish(self) -> None:
+        for p, _parent, base, *_rest in self.moves:
+            p.matrix = base
+        for node, style in self.saved.values():
+            node.style = style
+        self.node.set_style(opacity=1.0)
+        if not self.keep_source:
+            self.source.set_style(opacity=0.0)

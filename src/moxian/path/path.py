@@ -167,3 +167,22 @@ def polygon(points: list[tuple[float, float]]) -> Path:
     for x, y in points[1:]:
         p.line_to(x, y)
     return p.close()
+
+
+def arrow(x0: float, y0: float, x1: float, y1: float, head: float = 0.3, half_width: float = 0.13) -> tuple[Path, Path]:
+    """从 (x0, y0) 指向 (x1, y1) 的箭头：返回 (箭杆, 箭头尖)。
+
+    箭头尖是闭合三角形，尖端正好在 (x1, y1)；箭杆停在三角形底边的中点，描边不会从尖端戳出来。
+    箭头比 head 还短时，尖按比例缩小到总长的一半。
+    """
+    p0, p1 = np.array([x0, y0], dtype=float), np.array([x1, y1], dtype=float)
+    length = float(np.hypot(*(p1 - p0)))
+    if length < 1e-12:
+        raise ValueError("箭头的起点和终点重合")
+    u = (p1 - p0) / length
+    n = np.array([-u[1], u[0]])
+    k = min(1.0, length / 2 / head) if head > 0 else 1.0
+    h, w = head * k, half_width * k
+    base = p1 - u * h
+    tip = polygon([tuple(p1), tuple(base + n * w), tuple(base - n * w)])
+    return line(x0, y0, *base), tip

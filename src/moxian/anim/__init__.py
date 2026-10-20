@@ -11,6 +11,7 @@ from .animation import (
     Scale,
     Shift,
     TransformCopy,
+    TransformMatching,
     Wait,
     Write,
     fade_in,
@@ -23,6 +24,6 @@ from .timeline import MidSample, Timeline
 
 __all__ = [
     "MIDMOTION", "Animation", "CameraMove", "Draw", "Dynamic", "Fade", "Grow", "MidSample", "Morph", "MoveTo", "Param", "ParamTween", "Restyle",
-    "Scale", "Shift", "Timeline", "TransformCopy", "Wait", "Write", "easing", "fade_in", "fade_out", "focus_on",
+    "Scale", "Shift", "Timeline", "TransformCopy", "TransformMatching", "Wait", "Write", "easing", "fade_in", "fade_out", "focus_on",
     "refresh", "reset", "together", "tween", "updater",
 ]
