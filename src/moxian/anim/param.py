@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable
 
 from ..core import Node
 from . import easing
-from .animation import Animation, Easing
+from .animation import MIDMOTION, Animation, Easing
 
 
 class Param:
@@ -134,6 +134,7 @@ class ParamTween(Animation):
 
     def __init__(self, param: Param, target: float, duration: float = 1.0, ease: Easing = easing.smooth):
         super().__init__(Node(name=f"tween:{param.name}"), duration, ease)
+        self.sample_alphas = MIDMOTION  # 参数一路连续变化：依赖它的几何中途可能出问题
         self.param = param
         self.target = float(target)
         self.managed = False  # True：由时间线负责算值
