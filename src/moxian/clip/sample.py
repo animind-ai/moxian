@@ -51,15 +51,34 @@ def frame_index(
     span = t_out - t_in
     first, last = _trim_bounds(t_in, t_out, fps, n_frames)
 
-    if elapsed >= span:
-        if mode == "hold":
-            return last
-        elapsed = math.fmod(elapsed, span)
-        if elapsed < 0:
-            elapsed += span
+    if mode == "hold" and elapsed >= span:
+        return last
+    # 循环在「帧」上取余，不在秒上取余。秒上的 fmod(0.6, 0.2) 会得到略小于 0.2 的数，
+    # 整圈边界就被当成上一圈的最后一帧。
+    if mode == "loop":
+        offset_frames = _wrapped_frame_offset(elapsed, span, fps)
+        idx = math.floor(t_in * fps + offset_frames + 1e-9)
+    else:
+        idx = math.floor((t_in + elapsed) * fps + 1e-9)
+    return int(min(max(int(idx), first), last))
 
-    idx = int(math.floor((t_in + elapsed) * fps + 1e-9))
-    return int(min(max(idx, first), last))
+
+def _wrapped_frame_offset(elapsed: float, span: float, fps: float) -> float:
+    """循环播放时，落在修剪区间内的位置，单位是帧。整圈边界（第 k 圈的起点）返回 0。"""
+    span_frames = span * fps
+    if span_frames <= 0:
+        return 0.0
+    cycles = (elapsed * fps) / span_frames
+    nearest = round(cycles)
+    # 容差跟圈数一起放大，只吃掉浮点误差，不会提前一整帧。
+    if abs(cycles - nearest) <= 1e-9 * max(1.0, abs(cycles)):
+        return 0.0
+    phase = cycles - math.floor(cycles)
+    if phase < 0.0:
+        phase += 1.0
+    if phase > 1.0 - 1e-9:
+        return 0.0
+    return phase * span_frames
 
 
 def _trim_bounds(t_in: float, t_out: float, fps: float, n_frames: int) -> tuple[int, int]:

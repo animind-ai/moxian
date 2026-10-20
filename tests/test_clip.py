@@ -48,7 +48,7 @@ def _frames(directory: Path, colors=COLORS, size: int = 16) -> list[Path]:
     return paths
 
 
-def _video(directory: Path, fps: int = 10, colors=COLORS) -> Path:
+def _video(directory: Path, fps: int = 10, colors=COLORS, ts_offset: float | None = None) -> Path:
     if shutil.which("ffmpeg") is None:
         pytest.skip("需要 ffmpeg")
     _frames(directory, colors)
@@ -61,7 +61,11 @@ def _video(directory: Path, fps: int = 10, colors=COLORS) -> Path:
     else:
         out = directory / "clip.mov"
         codec = ["-c:v", "png", "-pix_fmt", "rgba"]
-    subprocess.check_call(["ffmpeg", "-y", "-v", "error", "-framerate", str(fps), "-i", pattern, *codec, str(out)])
+    cmd = ["ffmpeg", "-y", "-v", "error", "-framerate", str(fps), "-i", pattern, *codec]
+    if ts_offset is not None:
+        cmd += ["-output_ts_offset", str(ts_offset)]
+    cmd.append(str(out))
+    subprocess.check_call(cmd)
     return out
 
 
@@ -130,6 +134,27 @@ def test_frame_index_fps_mismatch_is_absolute():
     assert list(reversed(second)) == first
 
 
+def test_loop_wraps_at_cycle_boundaries_and_non_integer_trims():
+    # 0.2 不能用二进制写尽。秒上的 fmod(0.6, 0.2) 略小于 0.2，
+    # 整圈边界会落到修剪区间的最后一帧（3）；应该回到这一段的第一帧（2）。
+    trimmed = _window(10, 10, t_in=0.2, t_out=0.4, end="loop")
+    for k in range(6):
+        assert frame_index(0.2 * k, **trimmed) == 2
+    assert frame_index(0.1, **trimmed) == 3  # 圈内：源时间 0.3
+    assert frame_index(0.3, **trimmed) == 3
+    assert frame_index(0.599, **trimmed) == 3  # 边界之前仍是上一圈的最后一帧
+    assert frame_index(0.3, **_window(10, 10, t_in=0.2, t_out=0.4, end="loop", rate=2)) == 2
+
+    # 入点、出点不落在帧边界：[0.15, 0.55)，盖住的第一帧是 1
+    odd = _window(10, 20, t_in=0.15, t_out=0.55, end="loop")
+    assert frame_index(0.0, **odd) == 1
+    for k in range(1, 5):
+        assert frame_index(0.4 * k, **odd) == 1
+    assert frame_index(0.25, **odd) == 4
+    assert frame_index(0.4 + 0.25, **odd) == 4
+    assert frame_index(0.8 + 0.25, **odd) == 4
+
+
 def test_fit_contain_cover_stretch():
     wide = BBox(0, 0, 4, 2)  # 宽高比 2
     # 方图放进宽区域：contain 上下顶满、左右留空；cover 左右裁
@@ -171,6 +196,7 @@ def test_clip_placement_matches_other_nodes():
 
 
 def test_frame_names_sort_naturally_and_kind_is_inferred(tmp_path):
+    """帧序列按文件名自然排序：1、2、10，不是字典序。"""
     for name in ("frame_10.png", "frame_2.png", "frame_1.png", "note.txt"):
         (tmp_path / name).write_bytes(b"")
     ordered = [path.name for path in collect_frames(str(tmp_path))]
@@ -307,6 +333,31 @@ def _rgb(source, index) -> tuple[int, int, int]:
     image = source.frame(index).convert(colorType=skia.kRGBA_8888_ColorType, alphaType=skia.kUnpremul_AlphaType)
     pixel = np.asarray(image.toarray())[0, 0, :3]
     return tuple(int(v) for v in pixel)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="需要 ffmpeg")
+def test_seek_uses_frame_index_when_start_timestamp_is_nonzero(tmp_path):
+    """-ss 在 -i 前是相对输入起点的。再加 start_time 会跳过片头。"""
+    path = _video(tmp_path / "media", ts_offset=1.5)
+    probed = subprocess.check_output(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=start_time", "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        text=True,
+    ).strip()
+    assert float(probed) >= 1.0
+    from moxian.clip.source import VideoFrames
+
+    source = VideoFrames(path)
+    try:
+        assert _rgb(source, 0) == (255, 0, 0)
+        assert _rgb(source, 2) == (0, 0, 255)
+        assert _rgb(source, 3) == (255, 255, 255)
+        assert _rgb(source, 1) == (0, 255, 0)  # 往回跳仍然是那一帧
+    finally:
+        source.close()
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="需要 ffmpeg")

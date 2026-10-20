@@ -74,7 +74,9 @@ render_video(root, Timeline(), "build/hook.mp4", renderer, fps=30)
 ClipNode("sim/frame_*.png", fps=24, t_in=0.5, t_out=3.0, rate=0.5, fit="contain", end="loop")
 ```
 
-源帧 `i` 覆盖源时间 `[i/fps, (i+1)/fps)`。成片时刻 `t` 的源时间是 `t_in + (t - start) * rate`，帧号是 `floor(源时间 * fps)`，跟输出帧率无关，也不靠上一帧累加。输出 30fps、素材 24fps 时，有的成片帧会重复上一张源帧，画面没变就复用像素。
+源帧 `i` 覆盖源时间 `[i/fps, (i+1)/fps)`。成片时刻 `t` 的源时间是 `t_in + (t - start) * rate`，帧号是 `floor(源时间 * fps)`，跟输出帧率无关，也不靠上一帧累加。输出 30fps、素材 24fps 时，有的成片帧会重复上一张源帧，画面没变就复用像素。早于 `start` 时这块板不画。
+
+帧目录和 glob 按文件名自然排序：`frame_2.png` 在 `frame_10.png` 前面，不是字典序。
 
 | 参数 | 含义 |
 |---|---|
@@ -89,7 +91,7 @@ ClipNode("sim/frame_*.png", fps=24, t_in=0.5, t_out=3.0, rate=0.5, fit="contain"
 | `opacity` | 片段自己的透明度，再乘上父节点的 opacity |
 | `z` | 同级绘制顺序，默认 `-100` |
 | `end` | `hold`（默认，停在最后一帧）或 `loop` |
-| `start` | 成片时间轴上的开始时刻，秒 |
+| `start` | 成片时间轴上的开始时刻，秒。早于此时不画 |
 | `muted` | 只能为 True；音轨不解码 |
 
 墨线没有单独的静图节点。一张 PNG/JPEG 就是只有一帧的片段，摆放方式和别的节点一样（`local_bbox` 是这块板，`move_to` / `shift` / `scale` 改矩阵）。
@@ -191,7 +193,9 @@ A frame sequence is the same call. `fps` is required (a single image may omit it
 ClipNode("sim/frame_*.png", fps=24, t_in=0.5, t_out=3.0, rate=0.5, fit="contain", end="loop")
 ```
 
-Source frame `i` covers source time `[i/fps, (i+1)/fps)`. At scene time `t` the source time is `t_in + (t - start) * rate`, and the frame index is `floor(source_time * fps)`. It does not depend on the output frame rate, and it is not accumulated from the previous frame. At 30fps output and 24fps footage, some output frames repeat a source frame; unchanged pictures reuse pixels.
+Source frame `i` covers source time `[i/fps, (i+1)/fps)`. At scene time `t` the source time is `t_in + (t - start) * rate`, and the frame index is `floor(source_time * fps)`. It does not depend on the output frame rate, and it is not accumulated from the previous frame. At 30fps output and 24fps footage, some output frames repeat a source frame; unchanged pictures reuse pixels. Before `start`, the plate is not drawn.
+
+A directory or glob of frames is ordered by a natural sort of the filename: `frame_2.png` comes before `frame_10.png`.
 
 | Parameter | Meaning |
 |---|---|
@@ -206,7 +210,7 @@ Source frame `i` covers source time `[i/fps, (i+1)/fps)`. At scene time `t` the 
 | `opacity` | The plate's own opacity, multiplied by ancestor opacity |
 | `z` | Sibling draw order, default `-100` |
 | `end` | `hold` (default; keep the last frame) or `loop` |
-| `start` | Scene time when playback begins, in seconds |
+| `start` | Scene time when playback begins, in seconds. Nothing is drawn before it |
 | `muted` | Must be true; the audio track is not decoded |
 
 There is no separate still-image node. One PNG or JPEG is a one-frame clip, placed like any other node (`local_bbox` is the plate; `move_to` / `shift` / `scale` edit the matrix).

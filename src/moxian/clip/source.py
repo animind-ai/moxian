@@ -47,7 +47,7 @@ def _natural_key(path: Path) -> tuple:
 
 
 def collect_frames(src: str) -> list[Path]:
-    """目录、glob 或单张图里的帧，按文件名自然排序。"""
+    """目录、glob 或单张图里的帧，按文件名自然排序（frame_2 在 frame_10 前）。"""
     path = Path(src)
     if path.is_dir():
         files = [item for item in path.iterdir() if item.is_file() and item.suffix.lower() in _IMAGE_EXT]
@@ -76,12 +76,12 @@ def _ratio(text: str) -> float:
     return float(text)
 
 
-def probe_video(path: Path) -> tuple[int, int, float, int, float]:
-    """返回 (宽, 高, 帧率, 帧数, 起始时间戳)。"""
+def probe_video(path: Path) -> tuple[int, int, float, int]:
+    """返回 (宽, 高, 帧率, 帧数)。"""
     cmd = [
         "ffprobe", "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,duration,start_time",
+        "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,duration",
         "-show_entries", "format=duration",
         "-of", "json",
         str(path),
@@ -108,10 +108,9 @@ def probe_video(path: Path) -> tuple[int, int, float, int, float]:
         if not duration:
             raise RuntimeError(f"无法确定 {path} 有多少帧")
         n_frames = int(round(float(duration) * fps))
-    start = float(stream.get("start_time") or 0.0)
     if width <= 0 or height <= 0 or fps <= 0 or n_frames <= 0:
         raise RuntimeError(f"无效的视频流：{path}")
-    return width, height, fps, n_frames, start
+    return width, height, fps, n_frames
 
 
 def _rgba_image(array: np.ndarray) -> skia.Image:
@@ -129,8 +128,10 @@ def _rgba_image(array: np.ndarray) -> skia.Image:
 class _Pipe:
     """从某一帧开始、按顺序吐 RGBA 的 ffmpeg 进程。"""
 
-    def __init__(self, path: Path, start_time: float, fps: float, index: int, width: int, height: int):
-        t = start_time + index / fps
+    def __init__(self, path: Path, fps: float, index: int, width: int, height: int):
+        # -ss 放在 -i 前面时，时间相对这条输入的起点，不是绝对 PTS。
+        # 再加 start_time 会把非零起始时间的片子跳过开头，甚至直接读到结尾。
+        t = index / fps
         self.cmd = [
             "ffmpeg", "-v", "error", "-noautorotate",
             "-ss", f"{t:.12f}",
@@ -214,7 +215,7 @@ class VideoFrames:
         self.path = Path(path)
         if not self.path.is_file():
             raise FileNotFoundError(f"找不到视频 {self.path}")
-        self.width, self.height, self.fps, self.n_frames, self.start_time = probe_video(self.path)
+        self.width, self.height, self.fps, self.n_frames = probe_video(self.path)
         self.cache = _FrameCache(cache_frames)
         self.decodes = 0
         self.opens = 0
@@ -246,7 +247,7 @@ class VideoFrames:
                 return pipe.read()
             pipe.close()
             self._pipe = None
-        self._pipe = _Pipe(self.path, self.start_time, self.fps, index, self.width, self.height)
+        self._pipe = _Pipe(self.path, self.fps, index, self.width, self.height)
         self.opens += 1
         return self._pipe.read()
 
@@ -264,7 +265,7 @@ class VideoFrames:
 
 
 class FrameSequence:
-    """目录、glob 或单张 PNG/JPEG。fps 由调用方给定，第 i 帧就是排序后的第 i 个文件。"""
+    """目录、glob 或单张 PNG/JPEG。fps 由调用方给定，第 i 帧就是自然排序后的第 i 个文件。"""
 
     def __init__(self, src: str, fps: float | None, cache_frames: int = 4):
         self.paths = collect_frames(src)
