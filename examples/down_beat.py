@@ -1,7 +1,7 @@
 """用墨线渲染 scene-spec 示例 s67-p01 的 Down 一段（"往下做差"）。
 
 旁白和书签照 animind/scene-spec/examples/s67-p01.scene.yaml 里的 Down beat；
-时间来自 §6.7 实际合成的 Down.timing.json；书签时刻按字符位置比例估算（和 kit 一样）。
+时间来自 s67-p01（高中数列例题第 01 支）实际合成的 Down.timing.json；书签时刻按字符位置比例估算（和 kit 一样）。
 
 运行：uv run python examples/down_beat.py [音频目录]  → build/down.mp4
 """
