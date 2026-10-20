@@ -13,6 +13,9 @@ seek 只能向前。动画在开始时刻 begin()，结束时刻 finish()，之�
 
 参数补间（ParamTween，见 param.py）例外：时间线把它们按参数收集起来，参数在时刻 t 的值直接按 t 算，
 和 seek 的步长无关，也可以往回 seek。每次 seek 先更新参数、重建依赖它们的节点，再播其他动画。
+
+中途采样：标了 sample_alphas 的动画（参数补间默认标了）在 samples() 里给出它们播到一半之类的时刻，
+版式检查可以在那里看一眼；keyframes() 还是只管参数补间的起点、中点、终点，和以前一样。
 """
 
 from __future__ import annotations
@@ -21,6 +24,22 @@ from dataclasses import dataclass, field
 
 from .animation import Animation
 from .param import Param, ParamTween, Schedule, refresh
+
+
+@dataclass
+class MidSample:
+    """Timeline.samples() 的一项：时刻 time，以及哪些动画在这一刻播到了自己的哪个采样点。"""
+
+    time: float
+    sources: tuple[tuple[float, Animation], ...]  # (alpha, 动画)，按加入时间线的顺序
+
+    @property
+    def alpha(self) -> float:
+        return self.sources[0][0]
+
+    @property
+    def anim(self) -> Animation:
+        return self.sources[0][1]
 
 
 @dataclass
@@ -92,6 +111,28 @@ class Timeline:
             for start, _n, tw in sched.items:
                 times |= {start, start + tw.duration / 2, start + tw.duration}
         return sorted(times)
+
+    def samples(self) -> list[MidSample]:
+        """中途采样点：每个标了 sample_alphas 的动画在 开始 + alpha × 时长 处（时间线时刻，不是缓动后的 alpha）。
+
+        组合动画（together 等通过 children() 暴露子动画的）展开到每个子动画，子动画按它自己的开始时刻和时长算；
+        组合动画本身标了也算（按组合的时长）。没有暴露子动画的包装（例如 kit 的叠加层入场）看不到里面。
+        同一时刻（差 1e-9 以内）只给一条，sources 记下所有落在这一刻的 (alpha, 动画)；按时刻排序。
+        """
+        found: list[tuple[float, float, Animation]] = []
+        for item in self.items:
+            for offset, sub in _flatten(item.anim):
+                for a in sub.sample_alphas:
+                    found.append((item.start + offset + a * sub.duration, a, sub))
+        found.sort(key=lambda f: f[0])
+        out: list[MidSample] = []
+        for t, a, sub in found:
+            if out and t - out[-1].time <= 1e-9:
+                if not any(s is sub and x == a for x, s in out[-1].sources):
+                    out[-1].sources += ((a, sub),)
+                continue
+            out.append(MidSample(t, ((a, sub),)))
+        return out
 
     def seek(self, t: float) -> bool:
         """推进到时刻 t。返回这次有没有动画改变了画面（没有就可以复用上一帧）。"""

@@ -19,13 +19,46 @@ from . import easing
 
 Easing = Callable[[float], float]
 
+MIDMOTION = (0.25, 0.5, 0.75)  # 连续变化的动画默认在这几处做中途采样
+
+
+def check_alphas(alphas) -> tuple[float, ...]:
+    """中途采样点：必须严格在 (0, 1) 之内（起点、终点本来就会被检查）；排好序、去重。"""
+    out = tuple(sorted({float(a) for a in alphas}))
+    bad = [a for a in out if not 0.0 < a < 1.0]
+    if bad:
+        raise ValueError(f"sample_alphas 必须严格在 (0, 1) 之内，收到 {bad}")
+    return out
+
 
 class Animation:
+    """sample_alphas：中途采样点（时长的比例，不是缓动后的 alpha）。默认空：不做中途采样。
+
+    连续变化、中途不该出版式问题的动画（参数补间、割线逼近、平面变换……）标上它，
+    时间线的 samples() 就会给出这些时刻，版式检查在那里看一眼。刚体搬动、变形拷贝之类
+    中途本来就会穿过别的东西的动画不要标。用 sampled() 给单个动画标，或在子类里赋值。
+    """
+
+    _sample_alphas: tuple[float, ...] = ()
+
     def __init__(self, node: Node, duration: float = 0.6, ease: Easing = easing.smooth):
         self.node = node
         self.duration = max(1e-6, duration)
         self.ease = ease
         self.begun = False
+
+    @property
+    def sample_alphas(self) -> tuple[float, ...]:
+        return self._sample_alphas
+
+    @sample_alphas.setter
+    def sample_alphas(self, alphas) -> None:
+        self._sample_alphas = check_alphas(alphas)
+
+    def sampled(self, alphas=MIDMOTION) -> Animation:
+        """标上中途采样点，返回自己（方便写在构造表达式后面）。"""
+        self.sample_alphas = alphas
+        return self
 
     def begin(self) -> None:
         self.begun = True
