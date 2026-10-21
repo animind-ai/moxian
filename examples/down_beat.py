@@ -3,7 +3,7 @@
 旁白和书签照 animind/scene-spec/examples/s67-p01.scene.yaml 里的 Down beat；
 时间来自 §6.7 实际合成的 Down.timing.json；书签时刻按字符位置比例估算（和 kit 一样）。
 
-运行：uv run python examples/down_beat.py [音频目录]  → build/down.mp4
+运行：uv run python examples/down_beat.py <音频目录>  → build/down.mp4
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ from moxian.core import Group
 from moxian.encode import render_video
 from moxian.render import SkiaRenderer
 
-AUDIO = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/Users/Apple/Developer/peiyuMath/highSchool/lessons/sec6-7/p01/audio")
+if len(sys.argv) < 2:
+    sys.exit("用法：uv run python examples/down_beat.py <音频目录>（目录里要有 animind-voice 生成的 Down.timing.json 和 Down.wav）")
+AUDIO = Path(sys.argv[1])
 
 SAY = [
     ("s1", "先往下做差。按定义，后一项减前一项：{@d0}五减二，得三。"),
