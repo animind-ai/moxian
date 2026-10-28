@@ -1,6 +1,6 @@
 [project]
 name = "moxian"
-version = "0.0.1"
+version = "0.0.2"
 description = "墨线：数学讲解视频的矢量动画引擎 · Vector animation engine for math explainer videos"
 readme = "README.md"
 license = "MIT"
